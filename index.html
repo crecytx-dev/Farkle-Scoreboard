@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
+    <title>Farkle Mobile</title>
+    <style>
+        :root { 
+            --farkle-blue: #3b4cad; 
+            --farkle-focus: #33CCFF;
+            --farkle-red: #d9534f;
+            --col-width: 140px;
+        }
+        
+        html, body {
+            height: 100dvh;
+            width: 100vw;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, system-ui, sans-serif; 
+            color: var(--farkle-blue); 
+            background-color: #EBF2F9;
+
+            display: flex;
+            flex-direction: column;
+        }
+
+        .fixed-top-section {
+            flex: 0 0 auto;
+            width: 100%;
+            background: white;
+            z-index: 10;
+            border-bottom: 1px solid #ccc;
+            position: relative;
+        }
+
+        .btn-clear-small {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 1px solid #ddd;
+            background: #fff;
+            color: var(--farkle-red);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 20;
+        }
+
+        .fixed-stats-wrapper {
+            overflow-x: auto;
+            display: flex;
+            padding: 5px 10px;
+            gap: 10px;
+            scrollbar-width: none;
+        }
+        .fixed-stats-wrapper::-webkit-scrollbar { display: none; }
+
+        .game-area {
+            flex: 1;
+            overflow: auto;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .player-col { flex: 0 0 var(--col-width); }
+        .stats-card { flex: 0 0 var(--col-width); width: var(--col-width); }
+
+        .stats-container {
+            background: #f8f9ff;
+            padding: 4px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .label-text { font-size: 0.6em; text-transform: uppercase; font-weight: bold; color: #666; margin-left: 2px; }
+
+        input {
+            border: 2px solid #688FE4;
+            border-radius: 6px;
+            padding: 6px 2px;
+            text-align: center;
+            color: var(--farkle-blue);
+            font-weight: bold;
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 16px;
+            background: #fff;
+        }
+
+        /* Prevent arrow keys from changing numbers */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+
+        input:focus { background-color: var(--farkle-focus); outline: none; }
+        input:disabled { background-color: #eee; border-color: #ddd; cursor: not-allowed; }
+
+        /* Invalid score for strict rules (e.g. < 500 on first turn) */
+        .invalid-score { color: var(--farkle-red) !important; border-color: var(--farkle-red) !important; }
+
+        .score-display { background-color: #eef0ff; font-size: 1.1em; border: 1px solid #aaa; }
+        .winner-state { background-color: #ffd700 !important; color: #000 !important; }
+
+        .row-item { 
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 6px; 
+            gap: 5px; /* Adds space between number and input */
+        }
+
+        .row-num { 
+            font-size: 0.85em; /* Updated size */
+            color: #999; 
+            flex: 0 0 25px; /* Fixed width so it doesn't overlap */
+            text-align: right;
+            font-weight: bold;
+        }
+
+        .footer {
+            flex: 0 0 auto;
+            padding: 8px 0;
+            border-top: 1px solid #ddd;
+            display: flex;
+            justify-content: center;
+        }
+
+        .btn-print { 
+            border: 1px solid var(--farkle-blue); 
+            background: white; padding: 6px 30px; 
+            border-radius: 20px; font-size: 14px; font-weight: bold; color: var(--farkle-blue); 
+        }
+    </style>
+</head>
+<body>
+
+<div class="fixed-top-section">
+    <div class="btn-clear-small" onclick="clearData()">✕</div>
+    <div class="fixed-stats-wrapper" id="fixed-stats"></div>
+</div>
+
+<div class="game-area" id="player-grid"></div>
+
+<div class="footer">
+    <button class="btn-print" onclick="window.print()">Print Score Sheet</button>
+</div>
+
+<script>
+    const players = 8;
+    const rounds = 25;
+    const grid = document.getElementById('player-grid');
+    const statsWrapper = document.getElementById('fixed-stats');
+
+    function createBoard() {
+        for (let i = 0; i < players; i++) {
+            // Header Card
+            let statsCard = document.createElement('div');
+            statsCard.className = 'stats-card';
+            statsCard.innerHTML = `
+                <div class="stats-container">
+                    <span class="label-text">Name</span>
+                    <input type="text" class="name-input" data-col="${i}" data-row="-1" placeholder="Player ${i+1}" oninput="updateScore(${i})">
+                    <span class="label-text" style="margin-top:2px">Total</span>
+                    <input type="text" class="score-display" id="total-${i}" value="0" readonly tabindex="-1">
+                </div>
+            `;
+            statsWrapper.appendChild(statsCard);
+
+            // Scoring Column
+            let col = document.createElement('div');
+            col.className = 'player-col';
+            col.id = `col-${i}`;
+            let rowsHtml = '';
+            for (let j = 0; j < rounds; j++) {
+                rowsHtml += `
+                    <div class="row-item">
+                        <span class="row-num">${j+1}</span>
+                        <input type="number" inputmode="numeric" disabled
+                               data-col="${i}" data-row="${j}" 
+                               oninput="updateScore(${i})">
+                    </div>
+                `;
+            }
+            col.innerHTML = rowsHtml;
+            grid.appendChild(col);
+        }
+    }
+
+    grid.onscroll = () => { statsWrapper.scrollLeft = grid.scrollLeft; };
+
+    // Navigation and Value Lock
+    document.addEventListener('keydown', function(e) {
+        const active = document.activeElement;
+        if (!active.hasAttribute('data-col')) return;
+
+        // Prevent arrow keys from changing numbers
+        if (active.type === 'number' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            e.preventDefault();
+        }
+
+        let col = parseInt(active.dataset.col);
+        let row = parseInt(active.dataset.row);
+
+        if (e.key === 'ArrowUp') focusCell(col, row - 1);
+        if (e.key === 'ArrowDown') focusCell(col, row + 1);
+        if (e.key === 'ArrowLeft') focusCell(col - 1, row);
+        if (e.key === 'ArrowRight') focusCell(col + 1, row);
+    });
+
+    function focusCell(col, row) {
+        const target = document.querySelector(`input[data-col="${col}"][data-row="${row}"]`);
+        if (target && !target.disabled) {
+            target.focus();
+            target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    function updateScore(colIndex) {
+        // 1. Check Name Presence
+        const nameInp = document.querySelector(`.name-input[data-col="${colIndex}"]`);
+        const hasName = nameInp.value.trim() !== "";
+
+        let total = 0;
+        let isOpen = false;
+        
+        const inputs = document.querySelectorAll(`input[data-col="${colIndex}"][data-row]:not([data-row="-1"])`);
+        
+        // 2. Calculate and Validate Round 1
+        inputs.forEach(inp => {
+            let val = Number(inp.value) || 0;
+            const row = parseInt(inp.dataset.row);
+
+            if (row === 0) {
+                // Logic: Must be >= 500 to open
+                if (val >= 500) {
+                    isOpen = true;
+                    inp.classList.remove('invalid-score');
+                } else {
+                    isOpen = false;
+                    // Mark invalid only if user typed something > 0
+                    if (val > 0) inp.classList.add('invalid-score');
+                    else inp.classList.remove('invalid-score');
+                }
+            }
+
+            total += val;
+        });
+
+        // 3. Enforce Rules: Disable subsequent rows if not open
+        inputs.forEach(inp => {
+            const row = parseInt(inp.dataset.row);
+            if (row === 0) {
+                // First row only requires a Name
+                inp.disabled = !hasName;
+            } else {
+                // Subsequent rows require Name AND Open State (>=500 in row 0)
+                inp.disabled = !(hasName && isOpen);
+            }
+        });
+
+        // 4. If not open, Total is strictly 0 (even if numbers exist in disabled fields)
+        if (!isOpen) {
+            total = 0;
+        }
+
+        document.getElementById(`total-${colIndex}`).value = total.toLocaleString();
+        checkWinner();
+        save();
+    }
+
+    function checkWinner() {
+        // Calculate Max Score first
+        let maxScore = 0;
+        let totals = [];
+
+        // Gather all totals
+        for(let i=0; i<players; i++) {
+            const val = parseInt(document.getElementById(`total-${i}`).value.replace(/,/g, '')) || 0;
+            totals[i] = val;
+            if (val > maxScore) maxScore = val;
+        }
+
+        // Apply Winner State only to highest score(s) if >= 10,000
+        for(let i=0; i<players; i++) {
+            const display = document.getElementById(`total-${i}`);
+            const val = totals[i];
+            
+            if (val >= 10000 && val === maxScore) {
+                display.classList.add('winner-state');
+            } else {
+                display.classList.remove('winner-state');
+            }
+        }
+    }
+
+    function save() {
+        const data = {};
+        document.querySelectorAll('input').forEach(inp => {
+            data[`c${inp.dataset.col}r${inp.dataset.row}`] = inp.value;
+        });
+        localStorage.setItem('farkle_v6', JSON.stringify(data));
+    }
+
+    function load() {
+        const saved = localStorage.getItem('farkle_v6');
+        if (saved) {
+            const data = JSON.parse(saved);
+            document.querySelectorAll('input').forEach(inp => {
+                const val = data[`c${inp.dataset.col}r${inp.dataset.row}`];
+                if (val !== undefined) inp.value = val;
+            });
+            for(let i=0; i<players; i++) {
+                updateScore(i);
+            }
+        }
+    }
+
+    function clearData() {
+        if(confirm("Clear everything?")) {
+            localStorage.removeItem('farkle_v6');
+            location.reload();
+        }
+    }
+
+    createBoard();
+    window.onload = load;
+</script>
+</body>
+</html>
