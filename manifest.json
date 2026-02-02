@@ -1,5 +1,5 @@
 {
-  "name": "My Farkle Scorecard",
+  "name": "Farkle Scorecard",
   "short_name": "Farkle Scorecard",
   "start_url": "index.html",
   "scope": "./",
@@ -19,3 +19,4 @@
     }
   ]
 }
+
